@@ -11,7 +11,7 @@ module PathToStringParser
       paths += line.scan(/\S*_path/).map { |e| e.delete_prefix("\#{") }
     }
 
-    puts "Building a temporary routes file"
+    # Build a temporary routes file
     out_file = File.new("tmp/routes.txt", "w")
     out_file.puts(`rails routes`)
     out_file.close
@@ -25,6 +25,17 @@ module PathToStringParser
       end
     }
 
+    File.open( file ).each do |line| 
+      File.open( "#{file}_temp" ).each do |out_line| 
+        out_line.write(self.parse_line(line,translation))
+      end
+    end
+
+    File.delete("tmp/routes.txt")
+  end
+
+  def self.parse_line(frozen_line,translation)
+    line = frozen_line.dup
     replace_path = lambda do |arg|
       translation_replace = translation[arg.sub(/\(.*?\)/,'')].clone
       obj = arg.scan(/\(.*?\)/).first.delete_prefix("(").chomp(')') if arg.scan(/\(.*?\)/).first
@@ -33,27 +44,24 @@ module PathToStringParser
         translation_replace.clone.scan(/:\w*?\/|:.*/) { |a| 
           att_name = a.delete_prefix(":").chomp('/')
           raw_att_name = a.chomp('/')
-          translation_replace.sub!(raw_att_name, '#{'+"#{obj}.#{att_name}"+'}')
+          translation_replace = translation_replace.dup.sub!(raw_att_name, '#{'+"#{obj}.#{att_name}"+'}')
         }
       end
 
       translation_replace
     end
 
-    File.open( file ).each do |line| 
-      line.clone.scan(/\#{.*?\}/).reject { |e| e.include? "if " }.to_a.uniq.each do |r|
-        nr = r.chomp("}").delete_prefix('#{')
-        to_replace = replace_path.call(nr)
-        line.sub!(r,to_replace) if to_replace
-      end
-
-      line.clone.scan(/\S*_path\(.*?\)|\S*_path/).to_a.uniq.each do |r|
-        to_replace = replace_path.call(r)
-        line.sub!(r,"\"#{to_replace}\"") if to_replace
-      end
-
+    line.clone.scan(/\#{.*?\}/).reject { |e| e.include? "if " }.to_a.uniq.each do |r|
+      nr = r.chomp("}").delete_prefix('#{')
+      to_replace = replace_path.call(nr)
+      line.sub!(r,to_replace) if to_replace
     end
 
-    File.delete("tmp/routes.txt")
+    line.clone.scan(/\S*_path\(.*?\)|\S*_path/).to_a.uniq.each do |r|
+      to_replace = replace_path.call(r)
+      line.sub!(r,"\"#{to_replace}\"") if to_replace
+    end
+
+    line
   end
 end
